@@ -1,0 +1,19 @@
+# Clasp
+.clasprc.json
+
+# Node modules (if you add any npm packages later)
+node_modules/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.local
