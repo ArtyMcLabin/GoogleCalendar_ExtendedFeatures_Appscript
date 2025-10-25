@@ -1,4 +1,4 @@
-// v0.26 - Remove description tags for clean UX + fix null title crash + preserve user reminders
+// v0.27 - Capitalize Glue keyword (cosmetic)
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -20,7 +20,7 @@ var CONFIG = {
   MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com'],
 
-  GLUE_KEYWORD: 'glue',
+  GLUE_KEYWORD: 'Glue', // Case-insensitive: "Glue", "glue", "GLUE" all work
   GLUE_SEARCH_MONTHS_BEFORE: 1,
   GLUE_SEARCH_MONTHS_AFTER: 2
 };
