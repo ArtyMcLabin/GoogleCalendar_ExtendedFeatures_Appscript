@@ -39,6 +39,17 @@ clasp open
 clasp pull
 ```
 
+### Viewing Logs
+
+**CLI logs NOT available:** `clasp logs` requires GCP project setup (not configured)
+
+**To view execution logs:**
+1. Run `clasp open` to open web editor
+2. Click "Executions" in left sidebar
+3. Click on execution to view logs
+
+**Claude cannot access logs directly** - user must check manually and share relevant log entries
+
 ### Git Workflow
 
 ```bash
