@@ -1,4 +1,4 @@
-// v0.23 - Refactored for better maintainability and bug fixes
+// v0.24 - Fixed race condition by removing global duplicate check
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -66,27 +66,14 @@ function dispatchCalendarUpdates() {
     // Check if this is a glue event - process separately
     if (isGlueEvent(eventTitle)) {
       checkAndUpdateGlueEvents();
-      PROPERTIES.setProperty('lastProcessedEventId', eventId);
-      PROPERTIES.setProperty('lastProcessedEventTitle', eventTitle);
       Logger.log("END dispatchCalendarUpdates - Glue event processed");
       return;
     }
 
-    // For non-glue events, check if already processed by this trigger
-    var lastProcessedEventId = PROPERTIES.getProperty('lastProcessedEventId');
-    if (eventId === lastProcessedEventId) {
-      Logger.log('Event already processed by previous trigger');
-      Logger.log("END dispatchCalendarUpdates - Already processed");
-      return;
-    }
-
     // Process non-glue events - pass event to avoid re-fetching
+    // Event-specific tags prevent duplicate processing
     autoColorAndRenameEvent(recentEvent);
     colorMeetings(recentEvent);
-
-    // Mark this event as processed by this trigger
-    PROPERTIES.setProperty('lastProcessedEventId', eventId);
-    PROPERTIES.setProperty('lastProcessedEventTitle', eventTitle);
 
     Logger.log("END dispatchCalendarUpdates - Success");
 
