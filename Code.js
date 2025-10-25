@@ -1,4 +1,4 @@
-// v0.30 - PERFORMANCE: Process only changed glue events (not all)
+// v0.31 - Add debugShowAllGlueData() function to diagnose storage issues
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -563,4 +563,47 @@ function moveContainedEvents(calendar, glueEvent, containedEvents, timeDifferenc
 function clearAllProperties() {
   PROPERTIES.deleteAllProperties();
   Logger.log('All properties cleared');
+}
+
+/**
+ * Debug function to view all stored glue event data.
+ * Run this manually from Apps Script editor to see what's cached.
+ * This will tell you if glue events are being stored properly.
+ */
+function debugShowAllGlueData() {
+  var allProps = PROPERTIES.getProperties();
+  var keys = Object.keys(allProps);
+
+  Logger.log('=== STORED GLUE DATA DEBUG ===');
+  Logger.log('Total stored properties: ' + keys.length);
+
+  if (keys.length === 0) {
+    Logger.log('⚠️ NO DATA STORED!');
+    Logger.log('This means either:');
+    Logger.log('  1. No glue events have been created yet');
+    Logger.log('  2. Glue events were created but script never processed them');
+    Logger.log('  3. Storage is failing');
+    return;
+  }
+
+  keys.forEach(function(key) {
+    Logger.log('\n--- Storage Key: ' + key + ' ---');
+    try {
+      var data = JSON.parse(allProps[key]);
+      Logger.log('  Start Time: ' + data.startTime);
+      Logger.log('  Contained Events: ' + (data.containedEvents ? data.containedEvents.length : 0));
+      if (data.containedEvents && data.containedEvents.length > 0) {
+        data.containedEvents.forEach(function(evt) {
+          Logger.log('    - ' + evt.title + ' (offset: ' + (evt.relativeStart / 60000) + ' min)');
+        });
+      } else {
+        Logger.log('    (no contained events)');
+      }
+    } catch (e) {
+      Logger.log('  ERROR parsing: ' + e.toString());
+      Logger.log('  Raw value: ' + allProps[key]);
+    }
+  });
+
+  Logger.log('\n=== END DEBUG ===');
 }
