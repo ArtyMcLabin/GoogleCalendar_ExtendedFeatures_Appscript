@@ -95,8 +95,8 @@ This opens a browser window to authorize clasp with your Google account.
 **4. Clone this repository**
 
 ```bash
-git clone https://github.com/yourusername/calendApp.git
-cd calendApp
+git clone https://github.com/ArtyMcLabin/GoogleCalendar_ExtendedFeatures_Appscript.git
+cd GoogleCalendar_ExtendedFeatures_Appscript
 ```
 
 **5. Create your Apps Script project configuration**
@@ -326,4 +326,4 @@ Created with assistance from Claude (Anthropic AI) for personal calendar automat
 - Removed description tag pollution
 - Critical lock timeout fix
 
-See [commit history](https://github.com/yourusername/calendApp/commits) for detailed changelog.
+See [commit history](https://github.com/ArtyMcLabin/GoogleCalendar_ExtendedFeatures_Appscript/commits) for detailed changelog.
