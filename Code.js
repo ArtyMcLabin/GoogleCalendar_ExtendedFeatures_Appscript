@@ -1,4 +1,4 @@
-// v0.33 - CRITICAL FIX: Increase lock timeout (3s → 30s) to prevent processing interruption
+// v0.34 - Add new prefixes: "y " (yellow), "f " (free), "daily " (recurring)
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -14,7 +14,10 @@ var CONFIG = {
 
   COLOR_PREFIXES: {
     ORANGE: 'o ',
-    RED: 'r '
+    RED: 'r ',
+    YELLOW: 'y ',
+    FREE: 'f ',
+    DAILY: 'daily '
   },
 
   MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
@@ -186,8 +189,8 @@ function getRecentEvents() {
 // ============================================================================
 
 /**
- * Processes events with color prefixes ("o " or "r ").
- * Colors the event and removes the prefix from the title.
+ * Processes events with special prefixes.
+ * Supports: "o " (orange), "r " (red), "y " (yellow), "f " (free), "daily " (recurring)
  * Idempotent - safe to run multiple times (only processes if prefix exists).
  *
  * @param {GoogleAppsScript.Calendar.CalendarEvent} event - The event to process
@@ -212,35 +215,86 @@ function autoColorAndRenameEvent(event) {
     return false;
   }
 
-  // Check for color prefix (case insensitive)
-  if (originalTitle.length < 2) {
-    Logger.log('Title too short for prefix: ' + originalTitle);
-    Logger.log("END autoColorAndRenameEvent - No prefix");
-    return false;
+  var titleLower = originalTitle.toLowerCase();
+  var processed = false;
+
+  // Check for "daily " prefix first (longer prefix)
+  if (titleLower.indexOf(CONFIG.COLOR_PREFIXES.DAILY.toLowerCase()) === 0) {
+    var newTitle = originalTitle.substring(CONFIG.COLOR_PREFIXES.DAILY.length).trim();
+    event.setTitle(newTitle);
+
+    // Make event repeat daily with no end
+    var calendarId = Session.getEffectiveUser().getEmail();
+    var eventIdClean = eventId.replace("@google.com", "");
+
+    try {
+      Calendar.Events.patch(
+        { recurrence: ['RRULE:FREQ=DAILY'] },
+        calendarId,
+        eventIdClean
+      );
+      Logger.log('Event set to repeat daily: "' + originalTitle + '" → "' + newTitle + '"');
+      processed = true;
+    } catch (e) {
+      Logger.log('ERROR setting recurrence: ' + e.toString());
+    }
+  }
+  // Check for 2-character prefixes
+  else if (originalTitle.length >= 2) {
+    var prefix = titleLower.substring(0, 2);
+    var newTitle = null;
+    var color = null;
+    var setFree = false;
+
+    if (prefix === CONFIG.COLOR_PREFIXES.ORANGE.toLowerCase()) {
+      color = CalendarApp.EventColor.ORANGE;
+      newTitle = originalTitle.substring(2).trim();
+    } else if (prefix === CONFIG.COLOR_PREFIXES.RED.toLowerCase()) {
+      color = CalendarApp.EventColor.RED;
+      newTitle = originalTitle.substring(2).trim();
+    } else if (prefix === CONFIG.COLOR_PREFIXES.YELLOW.toLowerCase()) {
+      color = CalendarApp.EventColor.YELLOW;
+      newTitle = originalTitle.substring(2).trim();
+    } else if (prefix === CONFIG.COLOR_PREFIXES.FREE.toLowerCase()) {
+      setFree = true;
+      newTitle = originalTitle.substring(2).trim();
+    }
+
+    if (newTitle) {
+      event.setTitle(newTitle);
+
+      if (color) {
+        event.setColor(color);
+        Logger.log('Event colored: "' + originalTitle + '" → "' + newTitle + '" (Color: ' + color + ')');
+      }
+
+      if (setFree) {
+        // Set as "Free" (doesn't block time)
+        var calendarId = Session.getEffectiveUser().getEmail();
+        var eventIdClean = eventId.replace("@google.com", "");
+
+        try {
+          Calendar.Events.patch(
+            { transparency: "transparent" },
+            calendarId,
+            eventIdClean
+          );
+          Logger.log('Event set as FREE: "' + originalTitle + '" → "' + newTitle + '"');
+        } catch (e) {
+          Logger.log('ERROR setting free status: ' + e.toString());
+        }
+      }
+
+      processed = true;
+    }
   }
 
-  var prefix = originalTitle.substring(0, 2).toLowerCase();
-  var color = null;
-  var newTitle = null;
-
-  if (prefix === CONFIG.COLOR_PREFIXES.ORANGE) {
-    color = CalendarApp.EventColor.ORANGE;
-    newTitle = originalTitle.substring(2).trim();
-  } else if (prefix === CONFIG.COLOR_PREFIXES.RED) {
-    color = CalendarApp.EventColor.RED;
-    newTitle = originalTitle.substring(2).trim();
-  } else {
-    // No matching prefix - event doesn't need processing or already processed
+  if (!processed) {
     Logger.log('No matching prefix found in: ' + originalTitle);
     Logger.log("END autoColorAndRenameEvent - No prefix match");
     return false;
   }
 
-  // Apply changes (idempotent - safe to run multiple times)
-  event.setColor(color);
-  event.setTitle(newTitle);
-
-  Logger.log('Event colored and renamed: "' + originalTitle + '" -> "' + newTitle + '" (Color: ' + color + ')');
   Logger.log("END autoColorAndRenameEvent - Success");
   return true;
 }
