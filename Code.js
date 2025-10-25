@@ -1,4 +1,4 @@
-// v0.24 - Fixed race condition by removing global duplicate check
+// v0.25 - Process all recent events (30s window) to fix race condition
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -8,6 +8,7 @@ var CONFIG = {
   LOCK_TIMEOUT_MS: 3000,
   MAX_EVENTS: 2500,
   LOOKBACK_DAYS: 1,
+  RECENT_EVENTS_LOOKBACK_SECONDS: 30, // For processing multiple rapid events
   API_RATE_LIMIT_DELAY_MS: 3000,
   MEETING_REMINDER_MINUTES: 3,
 
@@ -51,30 +52,47 @@ function dispatchCalendarUpdates() {
       return;
     }
 
-    // Get the most recently updated event once
-    var recentEvent = getLastEditedEvent();
-    if (!recentEvent) {
+    // Get all recently updated events (last 30 seconds)
+    var recentEvents = getRecentEvents();
+    if (!recentEvents || recentEvents.length === 0) {
       Logger.log('No recent events found');
       Logger.log("END dispatchCalendarUpdates - No events");
       return;
     }
 
-    var eventId = recentEvent.getId();
-    var eventTitle = recentEvent.getTitle();
-    Logger.log('Processing event: ' + eventTitle + ' (ID: ' + eventId + ')');
+    Logger.log('Found ' + recentEvents.length + ' recent events to process');
 
-    // Check if this is a glue event - process separately
-    if (isGlueEvent(eventTitle)) {
-      checkAndUpdateGlueEvents();
-      Logger.log("END dispatchCalendarUpdates - Glue event processed");
-      return;
-    }
+    var processedCount = 0;
+    var skippedCount = 0;
+    var glueCount = 0;
 
-    // Process non-glue events - pass event to avoid re-fetching
-    // Event-specific tags prevent duplicate processing
-    autoColorAndRenameEvent(recentEvent);
-    colorMeetings(recentEvent);
+    // Process each recent event
+    recentEvents.forEach(function(event) {
+      var eventId = event.getId();
+      var eventTitle = event.getTitle();
 
+      Logger.log('Checking event: ' + eventTitle + ' (ID: ' + eventId + ')');
+
+      // Check if this is a glue event - process separately
+      if (isGlueEvent(eventTitle)) {
+        glueCount++;
+        checkAndUpdateGlueEvents();
+        return; // Continue to next event
+      }
+
+      // Process non-glue events
+      // Event-specific tags in functions prevent duplicate processing
+      var wasProcessedPrefix = autoColorAndRenameEvent(event);
+      var wasProcessedMeeting = colorMeetings(event);
+
+      if (wasProcessedPrefix || wasProcessedMeeting) {
+        processedCount++;
+      } else {
+        skippedCount++;
+      }
+    });
+
+    Logger.log('Summary: Processed=' + processedCount + ', Skipped=' + skippedCount + ', Glue=' + glueCount);
     Logger.log("END dispatchCalendarUpdates - Success");
 
   } catch (e) {
@@ -92,21 +110,32 @@ function dispatchCalendarUpdates() {
 // ============================================================================
 
 /**
- * Gets the most recently updated calendar event.
+ * Gets all recently updated calendar events (last 30 seconds).
  * Filters out recurring events to avoid processing duplicates.
- * @returns {GoogleAppsScript.Calendar.CalendarEvent|undefined} Most recent event or undefined
+ * @returns {Array<GoogleAppsScript.Calendar.CalendarEvent>} Array of recent events
  */
-function getLastEditedEvent() {
-  Logger.log("START getLastEditedEvent");
+function getRecentEvents() {
+  Logger.log("START getRecentEvents");
 
   try {
-    var options = buildEventQueryOptions();
+    // Use short lookback window for rapid event processing
+    var lookbackDate = new Date();
+    lookbackDate.setSeconds(lookbackDate.getSeconds() - CONFIG.RECENT_EVENTS_LOOKBACK_SECONDS);
+
+    var options = {
+      updatedMin: lookbackDate.toISOString(),
+      maxResults: 50, // Small number for recent events
+      orderBy: 'updated',
+      singleEvents: true,
+      showDeleted: false
+    };
+
     var calendarId = Session.getEffectiveUser().getEmail();
     var events = Calendar.Events.list(calendarId, options);
 
     if (!events.items || events.items.length === 0) {
-      Logger.log("No events found in query");
-      return undefined;
+      Logger.log("No events found in recent window");
+      return [];
     }
 
     // Filter out recurring events
@@ -114,12 +143,12 @@ function getLastEditedEvent() {
       .filter(function(event) { return !event.recurringEventId; })
       .filter(function(event) { return !event.recurrence; });
 
-    Logger.log('Total events: ' + events.items.length);
+    Logger.log('Total events in window: ' + events.items.length);
     Logger.log('Non-recurring events: ' + nonRecurringEvents.length);
 
     if (nonRecurringEvents.length === 0) {
       Logger.log("No non-recurring events found");
-      return undefined;
+      return [];
     }
 
     // Sort by updated time (most recent first)
@@ -127,45 +156,25 @@ function getLastEditedEvent() {
       return new Date(b.updated) - new Date(a.updated);
     });
 
-    // Get the most recent event
-    var latestEvent = nonRecurringEvents[0];
-    Logger.log('Selected event: ' + latestEvent.summary + ' (Updated: ' + latestEvent.updated + ')');
+    // Convert to CalendarEvent objects
+    var calendarEvents = [];
+    nonRecurringEvents.forEach(function(event) {
+      if (event.id) {
+        var calendarEvent = CalendarApp.getEventById(event.id);
+        if (calendarEvent) {
+          calendarEvents.push(calendarEvent);
+          Logger.log('Found event: ' + calendarEvent.getTitle());
+        }
+      }
+    });
 
-    if (!latestEvent.id) {
-      Logger.log("Event has no ID");
-      return undefined;
-    }
-
-    var calendarEvent = CalendarApp.getEventById(latestEvent.id);
-    if (!calendarEvent) {
-      Logger.log("Could not retrieve CalendarEvent object");
-      return undefined;
-    }
-
-    Logger.log("END getLastEditedEvent - Found: " + calendarEvent.getTitle());
-    return calendarEvent;
+    Logger.log("END getRecentEvents - Found: " + calendarEvents.length + " events");
+    return calendarEvents;
 
   } catch (e) {
-    Logger.log('ERROR in getLastEditedEvent: ' + e.toString());
-    return undefined;
+    Logger.log('ERROR in getRecentEvents: ' + e.toString());
+    return [];
   }
-}
-
-/**
- * Builds query options for fetching recent calendar events.
- * @returns {Object} Options object for Calendar.Events.list
- */
-function buildEventQueryOptions() {
-  var lookbackDate = new Date();
-  lookbackDate.setDate(lookbackDate.getDate() - CONFIG.LOOKBACK_DAYS);
-
-  return {
-    updatedMin: lookbackDate.toISOString(),
-    maxResults: CONFIG.MAX_EVENTS,
-    orderBy: 'updated',
-    singleEvents: true,
-    showDeleted: false
-  };
 }
 
 // ============================================================================
@@ -178,6 +187,7 @@ function buildEventQueryOptions() {
  * Uses event-specific marker to prevent duplicate processing.
  *
  * @param {GoogleAppsScript.Calendar.CalendarEvent} event - The event to process
+ * @returns {boolean} True if event was processed, false if skipped
  */
 function autoColorAndRenameEvent(event) {
   Logger.log("START autoColorAndRenameEvent");
@@ -185,7 +195,7 @@ function autoColorAndRenameEvent(event) {
   if (!event) {
     Logger.log('No event provided');
     Logger.log("END autoColorAndRenameEvent - No event");
-    return;
+    return false;
   }
 
   var eventId = event.getId();
@@ -196,14 +206,14 @@ function autoColorAndRenameEvent(event) {
   if (description.indexOf(CONFIG.PROCESSING_TAGS.PREFIX_PROCESSED) !== -1) {
     Logger.log('Event already processed for prefix coloring: ' + originalTitle);
     Logger.log("END autoColorAndRenameEvent - Already processed");
-    return;
+    return false;
   }
 
   // Check for color prefix (case insensitive)
   if (originalTitle.length < 2) {
     Logger.log('Title too short for prefix: ' + originalTitle);
     Logger.log("END autoColorAndRenameEvent - No prefix");
-    return;
+    return false;
   }
 
   var prefix = originalTitle.substring(0, 2).toLowerCase();
@@ -219,7 +229,7 @@ function autoColorAndRenameEvent(event) {
   } else {
     Logger.log('No matching prefix found in: ' + originalTitle);
     Logger.log("END autoColorAndRenameEvent - No prefix match");
-    return;
+    return false;
   }
 
   // Apply changes
@@ -229,6 +239,7 @@ function autoColorAndRenameEvent(event) {
 
   Logger.log('Event colored and renamed: "' + originalTitle + '" -> "' + newTitle + '" (Color: ' + color + ')');
   Logger.log("END autoColorAndRenameEvent - Success");
+  return true;
 }
 
 // ============================================================================
@@ -241,6 +252,7 @@ function autoColorAndRenameEvent(event) {
  * Uses event-specific marker to prevent duplicate processing.
  *
  * @param {GoogleAppsScript.Calendar.CalendarEvent} event - The event to process
+ * @returns {boolean} True if event was processed, false if skipped
  */
 function colorMeetings(event) {
   Logger.log("START colorMeetings");
@@ -248,7 +260,7 @@ function colorMeetings(event) {
   if (!event) {
     Logger.log('No event provided');
     Logger.log("END colorMeetings - No event");
-    return;
+    return false;
   }
 
   var title = (event.getTitle() || '').toLowerCase();
@@ -260,7 +272,7 @@ function colorMeetings(event) {
   if (description.indexOf(CONFIG.PROCESSING_TAGS.COLOR_MEETINGS_PROCESSED) !== -1) {
     Logger.log('Event already processed for meeting coloring: ' + event.getTitle());
     Logger.log("END colorMeetings - Already processed");
-    return;
+    return false;
   }
 
   // Mark as processed
@@ -285,6 +297,7 @@ function colorMeetings(event) {
   }
 
   Logger.log("END colorMeetings - Success (isMeeting: " + isMeeting + ")");
+  return true;
 }
 
 /**
