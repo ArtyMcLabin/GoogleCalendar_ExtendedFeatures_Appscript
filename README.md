@@ -99,13 +99,20 @@ git clone https://github.com/yourusername/calendApp.git
 cd calendApp
 ```
 
-**5. Create a new Apps Script project**
+**5. Create your Apps Script project configuration**
 
 ```bash
+# Create a new Apps Script project
 clasp create --title "Calendar Automation" --type standalone
 ```
 
 This creates a `.clasp.json` file with your new Script ID.
+
+**OR** if you prefer to use an existing project, copy the example:
+```bash
+cp .clasp.json.example .clasp.json
+# Then edit .clasp.json and replace YOUR_SCRIPT_ID_HERE with your actual Script ID
+```
 
 **6. Deploy to Apps Script**
 

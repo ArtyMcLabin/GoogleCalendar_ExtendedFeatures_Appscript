@@ -1,5 +1,6 @@
 # Clasp
 .clasprc.json
+.clasp.json
 
 # Node modules (if you add any npm packages later)
 node_modules/
