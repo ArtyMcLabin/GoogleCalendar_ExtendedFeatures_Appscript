@@ -1,4 +1,4 @@
-// v0.25 - Process all recent events (30s window) to fix race condition
+// v0.26 - Remove description tags for clean UX + fix null title crash + preserve user reminders
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -11,11 +11,6 @@ var CONFIG = {
   RECENT_EVENTS_LOOKBACK_SECONDS: 30, // For processing multiple rapid events
   API_RATE_LIMIT_DELAY_MS: 3000,
   MEETING_REMINDER_MINUTES: 3,
-
-  PROCESSING_TAGS: {
-    PREFIX_PROCESSED: '#prefix:processed',
-    COLOR_MEETINGS_PROCESSED: '#color_meetings:processed'
-  },
 
   COLOR_PREFIXES: {
     ORANGE: 'o ',
@@ -184,7 +179,7 @@ function getRecentEvents() {
 /**
  * Processes events with color prefixes ("o " or "r ").
  * Colors the event and removes the prefix from the title.
- * Uses event-specific marker to prevent duplicate processing.
+ * Idempotent - safe to run multiple times (only processes if prefix exists).
  *
  * @param {GoogleAppsScript.Calendar.CalendarEvent} event - The event to process
  * @returns {boolean} True if event was processed, false if skipped
@@ -200,12 +195,11 @@ function autoColorAndRenameEvent(event) {
 
   var eventId = event.getId();
   var originalTitle = event.getTitle();
-  var description = event.getDescription() || '';
 
-  // Check if already processed by this function
-  if (description.indexOf(CONFIG.PROCESSING_TAGS.PREFIX_PROCESSED) !== -1) {
-    Logger.log('Event already processed for prefix coloring: ' + originalTitle);
-    Logger.log("END autoColorAndRenameEvent - Already processed");
+  // Null/undefined safety check
+  if (!originalTitle) {
+    Logger.log('Event has no title (null or undefined)');
+    Logger.log("END autoColorAndRenameEvent - No title");
     return false;
   }
 
@@ -227,15 +221,15 @@ function autoColorAndRenameEvent(event) {
     color = CalendarApp.EventColor.RED;
     newTitle = originalTitle.substring(2).trim();
   } else {
+    // No matching prefix - event doesn't need processing or already processed
     Logger.log('No matching prefix found in: ' + originalTitle);
     Logger.log("END autoColorAndRenameEvent - No prefix match");
     return false;
   }
 
-  // Apply changes
+  // Apply changes (idempotent - safe to run multiple times)
   event.setColor(color);
   event.setTitle(newTitle);
-  event.setDescription(description + ' ' + CONFIG.PROCESSING_TAGS.PREFIX_PROCESSED);
 
   Logger.log('Event colored and renamed: "' + originalTitle + '" -> "' + newTitle + '" (Color: ' + color + ')');
   Logger.log("END autoColorAndRenameEvent - Success");
@@ -248,8 +242,8 @@ function autoColorAndRenameEvent(event) {
 
 /**
  * Automatically detects and colors meeting events.
- * Adds reminders to meetings, removes reminders from non-meetings.
- * Uses event-specific marker to prevent duplicate processing.
+ * Adds 3-minute reminders to detected meetings.
+ * Idempotent - safe to run multiple times, respects user's manual reminders.
  *
  * @param {GoogleAppsScript.Calendar.CalendarEvent} event - The event to process
  * @returns {boolean} True if event was processed, false if skipped
@@ -264,40 +258,45 @@ function colorMeetings(event) {
   }
 
   var title = (event.getTitle() || '').toLowerCase();
-  var description = event.getDescription() || '';
+  var description = (event.getDescription() || '').toLowerCase();
   var location = (event.getLocation() || '').toLowerCase();
   var currentColor = event.getColor();
-
-  // Check if already processed by this function
-  if (description.indexOf(CONFIG.PROCESSING_TAGS.COLOR_MEETINGS_PROCESSED) !== -1) {
-    Logger.log('Event already processed for meeting coloring: ' + event.getTitle());
-    Logger.log("END colorMeetings - Already processed");
-    return false;
-  }
-
-  // Mark as processed
-  event.setDescription(description + ' ' + CONFIG.PROCESSING_TAGS.COLOR_MEETINGS_PROCESSED);
 
   // Detect if this is a meeting
   var isMeeting = isMeetingEvent(event, title, description, location, currentColor);
 
-  if (isMeeting) {
-    event.setColor(CalendarApp.EventColor.RED);
-
-    // Add reminder if none exists
-    var reminders = event.getPopupReminders();
-    if (reminders.length === 0) {
-      event.addPopupReminder(CONFIG.MEETING_REMINDER_MINUTES);
-      Logger.log('Added ' + CONFIG.MEETING_REMINDER_MINUTES + '-minute reminder to meeting: ' + event.getTitle());
-    }
-  } else {
-    // Remove all reminders for non-meetings
-    event.removeAllReminders();
-    Logger.log('Removed reminders from non-meeting: ' + event.getTitle());
+  if (!isMeeting) {
+    Logger.log('Not a meeting: ' + event.getTitle());
+    Logger.log("END colorMeetings - Not a meeting");
+    return false;
   }
 
-  Logger.log("END colorMeetings - Success (isMeeting: " + isMeeting + ")");
-  return true;
+  // Is a meeting - apply meeting settings
+  var wasModified = false;
+
+  // Set color to red (idempotent)
+  if (currentColor !== CalendarApp.EventColor.RED) {
+    event.setColor(CalendarApp.EventColor.RED);
+    wasModified = true;
+    Logger.log('Set color to RED for meeting: ' + event.getTitle());
+  }
+
+  // Add 3-minute reminder if not already present
+  var reminders = event.getPopupReminders();
+  var has3MinReminder = reminders.some(function(reminder) {
+    return reminder === CONFIG.MEETING_REMINDER_MINUTES;
+  });
+
+  if (!has3MinReminder) {
+    event.addPopupReminder(CONFIG.MEETING_REMINDER_MINUTES);
+    wasModified = true;
+    Logger.log('Added ' + CONFIG.MEETING_REMINDER_MINUTES + '-minute reminder to meeting: ' + event.getTitle());
+  } else {
+    Logger.log('Meeting already has 3-min reminder: ' + event.getTitle());
+  }
+
+  Logger.log("END colorMeetings - " + (wasModified ? "Modified" : "No changes needed"));
+  return wasModified;
 }
 
 /**
