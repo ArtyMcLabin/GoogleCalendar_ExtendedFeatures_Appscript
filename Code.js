@@ -1,4 +1,4 @@
-// v0.29 - Add debugging logs for glue event processing
+// v0.30 - PERFORMANCE: Process only changed glue events (not all)
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -47,6 +47,14 @@ function dispatchCalendarUpdates() {
       return;
     }
 
+    // Get calendar once for efficiency
+    var calendar = CalendarApp.getCalendarById('primary');
+    if (!calendar) {
+      Logger.log('ERROR: Could not access primary calendar');
+      Logger.log("END dispatchCalendarUpdates - No calendar");
+      return;
+    }
+
     // Get all recently updated events (last 30 seconds)
     var recentEvents = getRecentEvents();
     if (!recentEvents || recentEvents.length === 0) {
@@ -68,10 +76,11 @@ function dispatchCalendarUpdates() {
 
       Logger.log('Checking event: ' + eventTitle + ' (ID: ' + eventId + ')');
 
-      // Check if this is a glue event - process separately
+      // Check if this is a glue event - process ONLY this specific glue
       if (isGlueEvent(eventTitle)) {
         glueCount++;
-        checkAndUpdateGlueEvents();
+        Logger.log('🔗 Processing glue event: ' + eventTitle);
+        handleGlueEvent(calendar, event);
         return; // Continue to next event
       }
 
@@ -344,8 +353,9 @@ function isGlueEvent(title) {
 }
 
 /**
- * Finds and processes all glue events in the calendar.
- * Glue events are container events that move child events when repositioned.
+ * Finds and processes ALL glue events in the calendar.
+ * @deprecated No longer used in normal flow (too slow). Each glue is now processed individually.
+ * Kept for manual debugging: can be run from Apps Script editor to re-process all glues.
  */
 function checkAndUpdateGlueEvents() {
   Logger.log("START checkAndUpdateGlueEvents");
