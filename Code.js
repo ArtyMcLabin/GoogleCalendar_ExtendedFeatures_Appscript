@@ -1,4 +1,4 @@
-// v0.28 - Fix glue detection bug (lowercase comparison)
+// v0.29 - Add debugging logs for glue event processing
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -413,25 +413,42 @@ function handleGlueEvent(calendar, glueEvent) {
     var currentStartTime = glueEvent.getStartTime().getTime();
     var storedData = PROPERTIES.getProperty(eventId);
 
+    Logger.log('EventID for storage: ' + eventId);
+    Logger.log('Current start time: ' + new Date(currentStartTime));
+    Logger.log('Has stored data: ' + (storedData ? 'YES' : 'NO'));
+
     if (storedData) {
       try {
         var storedInfo = JSON.parse(storedData);
         var storedStartTime = new Date(storedInfo.startTime).getTime();
 
+        Logger.log('Stored start time: ' + new Date(storedStartTime));
+        Logger.log('Stored contained events count: ' + (storedInfo.containedEvents ? storedInfo.containedEvents.length : 0));
+
         // If moved, update contained events
         if (currentStartTime !== storedStartTime) {
           var timeDifference = currentStartTime - storedStartTime;
-          Logger.log('Glue event moved by ' + timeDifference + ' ms');
+          Logger.log('🔄 Glue event MOVED by ' + timeDifference + ' ms (' + (timeDifference / 3600000) + ' hours)');
           moveContainedEvents(calendar, glueEvent, storedInfo.containedEvents, timeDifference);
+        } else {
+          Logger.log('✓ Glue event position unchanged');
         }
       } catch (parseError) {
         Logger.log('ERROR parsing stored glue data: ' + parseError.toString());
       }
+    } else {
+      Logger.log('⚠️ First time processing this glue event - storing initial position');
     }
 
     // Store current state
     var containedEvents = findContainedEvents(calendar, glueEvent);
-    Logger.log('Found ' + containedEvents.length + ' contained events');
+    Logger.log('📦 Found ' + containedEvents.length + ' contained events');
+
+    if (containedEvents.length > 0) {
+      containedEvents.forEach(function(evt) {
+        Logger.log('  - ' + evt.title + ' (relative start: ' + (evt.relativeStart / 60000) + ' min)');
+      });
+    }
 
     var dataToStore = {
       startTime: glueEvent.getStartTime().toISOString(),
@@ -439,6 +456,7 @@ function handleGlueEvent(calendar, glueEvent) {
     };
 
     PROPERTIES.setProperty(eventId, JSON.stringify(dataToStore));
+    Logger.log('💾 Stored glue state for: ' + glueEvent.getTitle());
 
   } catch (e) {
     Logger.log('ERROR in handleGlueEvent: ' + e.toString());
