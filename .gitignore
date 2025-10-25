@@ -17,3 +17,6 @@ Thumbs.db
 # Environment variables
 .env
 .env.local
+
+# Windows shortcut files
+*.url
