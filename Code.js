@@ -1,11 +1,11 @@
-// v0.32 - Add auto-capitalization for glue events ("glue test" → "Glue test")
+// v0.33 - CRITICAL FIX: Increase lock timeout (3s → 30s) to prevent processing interruption
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
 // ============================================================================
 
 var CONFIG = {
-  LOCK_TIMEOUT_MS: 3000,
+  LOCK_TIMEOUT_MS: 30000, // 30 seconds - must be longer than processing time (glue = ~9s)
   MAX_EVENTS: 2500,
   LOOKBACK_DAYS: 1,
   RECENT_EVENTS_LOOKBACK_SECONDS: 30, // For processing multiple rapid events
