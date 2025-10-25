@@ -83,3 +83,4 @@ git push
 - `.clasprc.json` is gitignored (contains OAuth tokens)
 - Script ID in `.clasp.json` is safe to commit (public identifier)
 - No environment variables or API keys needed (uses Google's OAuth)
+- in the end of each response mention explicitly if u deployed the changes or didnt

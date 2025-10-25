@@ -1,4 +1,4 @@
-// v0.27 - Capitalize Glue keyword (cosmetic)
+// v0.28 - Fix glue detection bug (lowercase comparison)
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -340,7 +340,7 @@ function isMeetingEvent(event, title, description, location, currentColor) {
  * @returns {boolean} True if glue event
  */
 function isGlueEvent(title) {
-  return title.toLowerCase().indexOf(CONFIG.GLUE_KEYWORD) !== -1;
+  return title.toLowerCase().indexOf(CONFIG.GLUE_KEYWORD.toLowerCase()) !== -1;
 }
 
 /**
