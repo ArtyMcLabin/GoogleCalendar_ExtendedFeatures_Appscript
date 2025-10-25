@@ -30,7 +30,7 @@ Automatically detects and enhances meeting events:
 
 **Detection criteria:**
 - Keywords in title: `meet`, `meeting`, `call`, `go`, `train`, `ride`
-- Meeting platforms in description/location: Google Meet, Zoom, Webex, GoToMeeting, Calendly
+- Meeting platforms in description/location: Google Meet, Zoom, Webex, GoToMeeting, Calendly, Zeeg
 - Events with attendees
 - Events already colored red
 
