@@ -1,4 +1,4 @@
-// v0.31 - Add debugShowAllGlueData() function to diagnose storage issues
+// v0.32 - Add auto-capitalization for glue events ("glue test" → "Glue test")
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -353,6 +353,20 @@ function isGlueEvent(title) {
 }
 
 /**
+ * Capitalizes all instances of "glue" (case-insensitive) to "Glue" in title.
+ * Examples: "glue test" → "Glue test", "GLUE work" → "Glue work"
+ * @param {string} title - Original title
+ * @returns {string} Title with capitalized "Glue"
+ */
+function capitalizeGlueInTitle(title) {
+  if (!title) return title;
+
+  // Replace all variations of "glue" with "Glue"
+  // Use regex with case-insensitive flag
+  return title.replace(/glue/gi, 'Glue');
+}
+
+/**
  * Finds and processes ALL glue events in the calendar.
  * @deprecated No longer used in normal flow (too slow). Each glue is now processed individually.
  * Kept for manual debugging: can be run from Apps Script editor to re-process all glues.
@@ -403,6 +417,15 @@ function handleGlueEvent(calendar, glueEvent) {
   Logger.log('Processing glue event: ' + glueEvent.getTitle());
 
   try {
+    var originalTitle = glueEvent.getTitle();
+
+    // Auto-capitalize "glue" to "Glue" in title
+    var capitalizedTitle = capitalizeGlueInTitle(originalTitle);
+    if (capitalizedTitle !== originalTitle) {
+      glueEvent.setTitle(capitalizedTitle);
+      Logger.log('Capitalized title: "' + originalTitle + '" → "' + capitalizedTitle + '"');
+    }
+
     // Set visual properties
     glueEvent.setColor(CalendarApp.EventColor.GRAY);
 
