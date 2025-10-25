@@ -1,4 +1,4 @@
-// v0.34 - Add new prefixes: "y " (yellow), "f " (free), "daily " (recurring)
+// v0.35 - Add zeeg.me to meeting methods detection
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -21,7 +21,7 @@ var CONFIG = {
   },
 
   MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
-  MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com'],
+  MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
 
   GLUE_KEYWORD: 'Glue', // Case-insensitive: "Glue", "glue", "GLUE" all work
   GLUE_SEARCH_MONTHS_BEFORE: 1,
