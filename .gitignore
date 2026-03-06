@@ -10,7 +10,9 @@ node_modules/
 Thumbs.db
 
 # IDE files
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+!.vscode/settings.json
 .idea/
 *.swp
 *.swo
@@ -21,3 +23,8 @@ Thumbs.db
 
 # Windows shortcut files
 *.url
+*.lnk
+
+# Claude launcher files
+*_Claude.ps1
+*_Claude.ico

@@ -63,31 +63,15 @@ git push
 
 ## Project Structure
 
-- `Code.js` - Main script with all active functions (v0.26)
+- `Code.js` - Main script with all active functions
 - `appsscript.json` - Apps Script configuration
 - `.clasp.json` - Clasp configuration (Script ID)
 
-## Recent Changes (v0.26)
+## How It Works
 
-**User Experience Improvements:**
-- 🎉 Removed ALL processing tags from descriptions (no more #prefix:processed clutter!)
-- Clean calendar UI - events show only your content
-
-**Critical Bug Fixes:**
-- Fixed null title crash (added safety checks)
-- Preserve user's manual reminders (no longer removes them)
-- Functions are now truly idempotent (safe to run multiple times)
-
-**How It Works Now:**
 - Prefix processing: Detects "o " or "r " prefix → processes → removes prefix (self-detecting, no tags needed)
 - Meeting detection: Adds 3-min reminder to meetings, respects any other reminders you set
-- Safe to run repeatedly without side effects
-
-**Previous Updates (v0.23-v0.25):**
-- Fixed race condition for rapid event creation (30-second window processing)
-- Extracted configuration to CONFIG object
-- Comprehensive JSDoc documentation
-- Better error handling with stack traces
+- Safe to run repeatedly without side effects (idempotent)
 
 ## Security
 
