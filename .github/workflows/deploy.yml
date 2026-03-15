@@ -1,0 +1,91 @@
+# Deploy Apps Script via clasp push
+#
+# Triggers on push to master when Apps Script source files change.
+# Authenticates clasp using an OAuth token stored as a GitHub secret.
+#
+# ============================================================
+# REQUIRED SECRET: CLASP_TOKEN
+# ============================================================
+# Set via: gh secret set CLASP_TOKEN -R ArtyMcLabin/GoogleCalendar_ExtendedFeatures_Appscript < ~/.clasprc.json
+#
+# Or manually at:
+#   https://github.com/ArtyMcLabin/GoogleCalendar_ExtendedFeatures_Appscript/settings/secrets/actions
+#
+# Value: the FULL contents of ~/.clasprc.json, which looks like:
+#
+#   {
+#     "tokens": {
+#       "default": {
+#         "client_id": "...",
+#         "client_secret": "...",
+#         "type": "authorized_user",
+#         "refresh_token": "...",
+#         "access_token": "...",
+#         "token_type": "Bearer",
+#         "expiry_date": ...,
+#         "id_token": "..."
+#       }
+#     }
+#   }
+#
+# The refresh_token is what matters -- clasp will refresh the access_token
+# automatically. If auth stops working, re-run `clasp login` locally and
+# update the secret with the new ~/.clasprc.json contents.
+# ============================================================
+
+name: Deploy to Apps Script
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "*.js"
+      - "*.gs"
+      - "*.html"
+      - "appsscript.json"
+      - ".clasp.json"
+
+# Prevent concurrent deploys -- queue if one is already running
+concurrency:
+  group: clasp-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: clasp push
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install @google/clasp
+        run: npm install -g @google/clasp
+
+      - name: Write clasp credentials
+        run: echo '${{ secrets.CLASP_TOKEN }}' > ~/.clasprc.json
+
+      - name: Verify clasp authentication
+        run: |
+          # Confirm the credentials file was written and contains a refresh token
+          if [ ! -f ~/.clasprc.json ]; then
+            echo "::error::~/.clasprc.json was not created. Is the CLASP_TOKEN secret set?"
+            exit 1
+          fi
+          if ! grep -q "refresh_token" ~/.clasprc.json; then
+            echo "::error::~/.clasprc.json does not contain a refresh_token. Check the CLASP_TOKEN secret format."
+            exit 1
+          fi
+          echo "Credentials file is present and contains a refresh token."
+
+      - name: Push to Apps Script
+        run: clasp push --force
+
+      - name: Confirm deployment
+        run: echo "Successfully deployed to Apps Script (script ID $(jq -r .scriptId .clasp.json))"
