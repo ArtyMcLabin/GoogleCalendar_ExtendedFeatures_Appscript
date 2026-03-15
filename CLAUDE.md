@@ -15,51 +15,28 @@ This is a Google Apps Script project for automating Google Calendar event manage
 
 ### Deployment Protocol
 
-**IMPORTANT: Manual Deployment Required**
-
-This project uses `clasp` for deployment. GitHub pushes do NOT trigger automatic deployment.
-
-**Before every git push, Claude should ask:**
-> "Do you want to deploy these changes to Apps Script with `clasp push`?"
-
-**Unless:**
-- User already explicitly stated they want to deploy (in current conversation)
-- User already explicitly stated they DON'T want to deploy (in current conversation)
-
-### Deployment Commands
+🚨 **CI/CD auto-deploys:** `git push` to master triggers GitHub Actions → `clasp push --force`. No manual clasp push needed.
 
 ```bash
-# Deploy to Apps Script (makes code live)
-clasp push
-
-# Open project in web editor
-clasp open
-
-# Pull latest from Apps Script (if edited in web UI)
-clasp pull
+git push              # Triggers CI/CD auto-deploy (preferred)
+clasp push --force    # Manual fallback if CI/CD is down
+clasp pull            # Get latest from Google (if edited in web UI)
 ```
 
 ### Viewing Logs
 
-**CLI logs NOT available:** `clasp logs` requires GCP project setup (not configured)
-
-**To view execution logs:**
-1. Run `clasp open` to open web editor
-2. Click "Executions" in left sidebar
-3. Click on execution to view logs
-
-**Claude cannot access logs directly** - user must check manually and share relevant log entries
+```bash
+clasp logs            # CLI logs (if GCP project linked)
+clasp open            # Fallback: open web editor → Executions sidebar
+```
 
 ### Git Workflow
 
 ```bash
-# Commit and push to GitHub (version control only)
 git add .
 git commit -m "Description of changes"
-git push
+git push              # Triggers CI/CD auto-deploy
 ```
-
-**Remember:** Git push ≠ Apps Script deployment. These are separate steps.
 
 ## Project Structure
 
@@ -78,5 +55,9 @@ git push
 - `.clasprc.json` is gitignored (contains OAuth tokens)
 - Script ID in `.clasp.json` is safe to commit (public identifier)
 - No environment variables or API keys needed (uses Google's OAuth)
-- in the end of each response mention explicitly if u deployed the changes or didnt
-- dont ask me to open clasp. do it yourself through CLI always always
+- In the end of each response mention explicitly if you deployed the changes or didn't
+- 🚨 **CLI-first, zero UI clicks** — Never ask user to click anything in the spreadsheet or Apps Script UI. All operations through CLI:
+  - **Run functions:** `bash ~/.claude/scripts/run-appscript.sh "<scriptId>" <functionName>`
+  - **Deploy:** `git push` (CI/CD) or `clasp push --force` (fallback)
+  - **View logs:** `clasp logs` or `clasp open` (last resort)
+- See `~/.claude/skills/apps-script/SKILL.md` for auth setup and CLI function execution
