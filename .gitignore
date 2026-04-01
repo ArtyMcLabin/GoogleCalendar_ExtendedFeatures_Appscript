@@ -1,6 +1,6 @@
-# Clasp
+# Clasp credentials (OAuth tokens - NEVER commit)
 .clasprc.json
-.clasp.json
+# Note: .clasp.json (project settings) is NOT ignored — CI/CD needs it
 
 # Node modules (if you add any npm packages later)
 node_modules/

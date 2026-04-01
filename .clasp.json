@@ -1,0 +1,17 @@
+{
+  "scriptId": "1ijtvvzlq1IUCdV97jcpJi--KegBhRF94GuirfIXIhE7p6zAhHDrwJnQQ",
+  "projectId": "personal-461121",
+  "rootDir": "",
+  "scriptExtensions": [
+    ".js",
+    ".gs"
+  ],
+  "htmlExtensions": [
+    ".html"
+  ],
+  "jsonExtensions": [
+    ".json"
+  ],
+  "filePushOrder": [],
+  "skipSubdirectories": false
+}
