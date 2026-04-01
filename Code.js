@@ -11,6 +11,7 @@ var CONFIG = {
   RECENT_EVENTS_LOOKBACK_SECONDS: 30, // For processing multiple rapid events
   API_RATE_LIMIT_DELAY_MS: 3000,
   MEETING_REMINDER_MINUTES: 3,
+  FAILURE_NOTIFICATION_COOLDOWN_MS: 24 * 60 * 60 * 1000, // 24 hours
 
   COLOR_PREFIXES: {
     ORANGE: 'o ',
@@ -22,6 +23,8 @@ var CONFIG = {
 
   MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
+
+  NOTIFICATION_EMAIL: '<REDACTED_OWNER_EMAIL>',
 
   GLUE_KEYWORD: 'Glue', // Case-insensitive: "Glue", "glue", "GLUE" all work
   GLUE_SEARCH_MONTHS_BEFORE: 1,
@@ -105,6 +108,7 @@ function dispatchCalendarUpdates() {
   } catch (e) {
     Logger.log('ERROR in dispatchCalendarUpdates: ' + e.toString());
     Logger.log('Stack trace: ' + e.stack);
+    notifyFailure('dispatchCalendarUpdates', e);
   } finally {
     if (lock.hasLock()) {
       lock.releaseLock();
@@ -632,6 +636,43 @@ function moveContainedEvents(calendar, glueEvent, containedEvents, timeDifferenc
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
+
+/**
+ * Sends an email notification when the script fails.
+ * Rate-limited to one email per 24 hours to avoid spam.
+ * Uses GmailApp — if sending fails (e.g. missing scope), logs silently.
+ *
+ * @param {string} functionName - The function that failed
+ * @param {Error} error - The error object
+ */
+function notifyFailure(functionName, error) {
+  try {
+    var lastNotified = PROPERTIES.getProperty('lastFailureNotification');
+    var now = Date.now();
+
+    if (lastNotified && (now - parseInt(lastNotified, 10)) < CONFIG.FAILURE_NOTIFICATION_COOLDOWN_MS) {
+      Logger.log('Failure notification suppressed (cooldown active)');
+      return;
+    }
+
+    var subject = '⚠️ calendApp script failure: ' + functionName;
+    var body = 'Function: ' + functionName + '\n'
+      + 'Time: ' + new Date().toISOString() + '\n'
+      + 'Error: ' + error.toString() + '\n\n'
+      + 'Stack trace:\n' + (error.stack || 'N/A') + '\n\n'
+      + 'This is an automated notification from your Google Calendar Apps Script.\n'
+      + 'The script will keep retrying on each calendar change, but processing is broken until the error is resolved.\n\n'
+      + 'Common fix: re-run setupTrigger() from CLI after re-authorizing OAuth scopes.';
+
+    GmailApp.sendEmail(CONFIG.NOTIFICATION_EMAIL, subject, body);
+    PROPERTIES.setProperty('lastFailureNotification', String(now));
+    Logger.log('Failure notification email sent');
+
+  } catch (notifyError) {
+    // If even the notification fails (e.g. missing mail scope), just log it
+    Logger.log('Could not send failure notification: ' + notifyError.toString());
+  }
+}
 
 /**
  * Clears all stored properties (for debugging/maintenance).
