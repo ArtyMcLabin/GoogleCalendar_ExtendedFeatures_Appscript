@@ -684,3 +684,32 @@ function debugShowAllGlueData() {
 
   Logger.log('\n=== END DEBUG ===');
 }
+
+/**
+ * Recreates the calendar update trigger with fresh OAuth authorization.
+ * Run this after changing oauthScopes in appsscript.json to re-grant permissions.
+ * @param {string} [email] - Calendar owner email. If omitted, uses Session.getEffectiveUser().
+ */
+function setupTrigger(email) {
+  // Delete existing calendar triggers for this function
+  var triggers = ScriptApp.getProjectTriggers();
+  var deleted = 0;
+  triggers.forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'dispatchCalendarUpdates') {
+      ScriptApp.deleteTrigger(trigger);
+      deleted++;
+    }
+  });
+  Logger.log('Deleted ' + deleted + ' existing trigger(s)');
+
+  // Resolve email: parameter > Session fallback
+  var calendarEmail = email || Session.getEffectiveUser().getEmail();
+
+  // Create new trigger
+  ScriptApp.newTrigger('dispatchCalendarUpdates')
+    .forUserCalendar(calendarEmail)
+    .onEventUpdated()
+    .create();
+
+  Logger.log('✅ New calendar trigger created for: ' + calendarEmail);
+}
