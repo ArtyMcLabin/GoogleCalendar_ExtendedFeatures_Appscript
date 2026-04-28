@@ -1,4 +1,4 @@
-// v0.35 - Add zeeg.me to meeting methods detection
+// v0.36 - Diagnostic logging in isMeetingEvent: shows which condition triggered red coloring
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -377,22 +377,33 @@ function colorMeetings(event) {
  * @returns {boolean} True if event is a meeting
  */
 function isMeetingEvent(event, title, description, location, currentColor) {
-  // Check for meeting keywords in title
-  var hasKeyword = CONFIG.MEETING_KEYWORDS.some(function(keyword) {
-    return title.indexOf(keyword) !== -1;
+  var matchedKeyword = null;
+  CONFIG.MEETING_KEYWORDS.some(function(keyword) {
+    if (title.indexOf(keyword) !== -1) { matchedKeyword = keyword; return true; }
+    return false;
   });
+  var hasKeyword = matchedKeyword !== null;
 
-  // Check for meeting platforms in description or location
-  var hasMeetingMethod = CONFIG.MEETING_METHODS.some(function(method) {
-    return description.indexOf(method) !== -1 || location.indexOf(method) !== -1;
+  var matchedMethod = null;
+  CONFIG.MEETING_METHODS.some(function(method) {
+    if (description.indexOf(method) !== -1 || location.indexOf(method) !== -1) {
+      matchedMethod = method; return true;
+    }
+    return false;
   });
+  var hasMeetingMethod = matchedMethod !== null;
 
-  // Check for multiple attendees
   var attendees = event.getGuestList();
   var hasAttendees = attendees && attendees.length > 0;
 
-  // Already colored red (manual indicator)
   var isRed = currentColor === CalendarApp.EventColor.RED;
+
+  var eventId = event.getId();
+  Logger.log('isMeetingEvent decision for "' + event.getTitle() + '" (id=' + eventId + '): ' +
+    'hasKeyword=' + hasKeyword + (matchedKeyword ? '(matched="' + matchedKeyword + '")' : '') +
+    ', hasMeetingMethod=' + hasMeetingMethod + (matchedMethod ? '(matched="' + matchedMethod + '")' : '') +
+    ', hasAttendees=' + hasAttendees + '(count=' + (attendees ? attendees.length : 0) + ')' +
+    ', isRed=' + isRed + '(currentColor="' + currentColor + '")');
 
   return hasKeyword || hasMeetingMethod || hasAttendees || isRed;
 }
