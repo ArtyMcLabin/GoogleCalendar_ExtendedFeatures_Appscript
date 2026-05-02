@@ -24,7 +24,10 @@ var CONFIG = {
   MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
 
-  NOTIFICATION_EMAIL: '<REDACTED_OWNER_EMAIL>',
+  // NOTIFICATION_EMAIL: SSoT — getNotificationEmail() reads from Script Properties first,
+  // falls back to Session.getActiveUser().getEmail() at runtime.
+  // To set explicitly: Apps Script editor → Project Settings → Script Properties → add NOTIFICATION_EMAIL,
+  // or run setupNotificationEmail() once from the editor.
 
   GLUE_KEYWORD: 'Glue', // Case-insensitive: "Glue", "glue", "GLUE" all work
   GLUE_SEARCH_MONTHS_BEFORE: 1,
@@ -675,7 +678,7 @@ function notifyFailure(functionName, error) {
       + 'The script will keep retrying on each calendar change, but processing is broken until the error is resolved.\n\n'
       + 'Common fix: re-run setupTrigger() from CLI after re-authorizing OAuth scopes.';
 
-    GmailApp.sendEmail(CONFIG.NOTIFICATION_EMAIL, subject, body);
+    GmailApp.sendEmail(getNotificationEmail(), subject, body);
     PROPERTIES.setProperty('lastFailureNotification', String(now));
     Logger.log('Failure notification email sent');
 
@@ -764,4 +767,33 @@ function setupTrigger(email) {
     .create();
 
   Logger.log('✅ New calendar trigger created for: ' + calendarEmail);
+}
+
+// ============================================================================
+// NOTIFICATION EMAIL CONFIG (SSoT)
+// ============================================================================
+
+/**
+ * Returns the email address to receive failure notifications.
+ * Precedence:
+ *   1. Script Property `NOTIFICATION_EMAIL` (set via Project Settings or setupNotificationEmail())
+ *   2. Session.getActiveUser().getEmail() — runtime fallback to script owner
+ * Never hardcoded in source.
+ * @returns {string} email address
+ */
+function getNotificationEmail() {
+  var prop = PropertiesService.getScriptProperties().getProperty('NOTIFICATION_EMAIL');
+  if (prop) return prop;
+  return Session.getActiveUser().getEmail();
+}
+
+/**
+ * One-shot setup helper. Run once from the Apps Script editor to seed the
+ * NOTIFICATION_EMAIL script property to the active user's email.
+ * Idempotent — safe to re-run; just overwrites the property with the same value.
+ */
+function setupNotificationEmail() {
+  var email = Session.getActiveUser().getEmail();
+  PropertiesService.getScriptProperties().setProperty('NOTIFICATION_EMAIL', email);
+  Logger.log('NOTIFICATION_EMAIL set to: ' + email);
 }
