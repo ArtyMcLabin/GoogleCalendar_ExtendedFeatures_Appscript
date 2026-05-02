@@ -28,3 +28,4 @@ Thumbs.db
 # Claude launcher files
 *_Claude.ps1
 *_Claude.ico
+.git-replacements.txt
