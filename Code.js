@@ -1,4 +1,4 @@
-// v0.36 - Diagnostic logging in isMeetingEvent: shows which condition triggered red coloring
+// v0.37 - Glue skips RED events (meetings) at capture + move time
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -598,6 +598,12 @@ function findContainedEvents(calendar, glueEvent) {
         return false;
       }
 
+      // Skip red events (meetings) — glue must not drag fixed-time commitments
+      if (event.getColor() === CalendarApp.EventColor.RED) {
+        Logger.log('  Skipping RED event from glue: ' + event.getTitle());
+        return false;
+      }
+
       // Check if fully contained within glue event
       var eventStart = event.getStartTime();
       var eventEnd = event.getEndTime();
@@ -632,6 +638,12 @@ function moveContainedEvents(calendar, glueEvent, containedEvents, timeDifferenc
       var event = calendar.getEventById(eventInfo.id);
       if (!event) {
         Logger.log('Could not find event: ' + eventInfo.title);
+        return;
+      }
+
+      // Fresh red-check at move time — event may have been re-colored red after capture
+      if (event.getColor() === CalendarApp.EventColor.RED) {
+        Logger.log('Skipping move of RED event (meeting): ' + eventInfo.title);
         return;
       }
 
