@@ -1,4 +1,4 @@
-// v0.38 - "breath"/"b" keyword → Breath+green; removed pointless rate-limit sleeps (glue faster)
+// v0.39 - keyword events (breath/declutter) → rename+green+busy; removed pointless rate-limit sleeps
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -20,9 +20,12 @@ var CONFIG = {
     DAILY: 'daily '
   },
 
-  // Exact-match keywords (case-insensitive, whole title) → rename + recolor green
-  BREATH_KEYWORDS: ['breath', 'b'],
-  BREATH_TITLE: 'Breath',
+  // Exact-match keyword events (whole title, case-insensitive) → rename + color + busy.
+  // color = CalendarApp.EventColor key; busy:true enforces opaque (blocks time).
+  KEYWORD_EVENTS: [
+    { keywords: ['breath', 'b'], title: 'Breath', color: 'GREEN', busy: true },
+    { keywords: ['declutter', 'd'], title: 'Declutter', color: 'GREEN', busy: true }
+  ],
 
   MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
@@ -228,21 +231,16 @@ function autoColorAndRenameEvent(event) {
   var titleLower = originalTitle.toLowerCase();
   var processed = false;
 
-  // Exact-match keyword: whole title "breath" or "b" → "Breath" + green.
-  // Guarded setters make it idempotent and loop-safe (no rewrite once correct).
-  if (CONFIG.BREATH_KEYWORDS.indexOf(titleLower.trim()) !== -1) {
-    var breathChanged = false;
-    if (originalTitle !== CONFIG.BREATH_TITLE) {
-      event.setTitle(CONFIG.BREATH_TITLE);
-      breathChanged = true;
+  // Exact-match keyword events (whole title) → rename + color + busy. Idempotent/loop-safe.
+  var trimmedLower = titleLower.trim();
+  for (var ke = 0; ke < CONFIG.KEYWORD_EVENTS.length; ke++) {
+    var spec = CONFIG.KEYWORD_EVENTS[ke];
+    if (spec.keywords.indexOf(trimmedLower) !== -1) {
+      var changed = applyKeywordEvent(event, spec);
+      Logger.log('Keyword event: "' + originalTitle + '" → "' + spec.title + '"');
+      Logger.log("END autoColorAndRenameEvent - KeywordEvent");
+      return changed;
     }
-    if (event.getColor() !== CalendarApp.EventColor.GREEN) {
-      event.setColor(CalendarApp.EventColor.GREEN);
-      breathChanged = true;
-    }
-    Logger.log('Breath keyword: "' + originalTitle + '" → "' + CONFIG.BREATH_TITLE + '" (green)');
-    Logger.log("END autoColorAndRenameEvent - Breath");
-    return breathChanged;
   }
 
   // Check for "daily " prefix first (longer prefix)
@@ -324,6 +322,48 @@ function autoColorAndRenameEvent(event) {
 
   Logger.log("END autoColorAndRenameEvent - Success");
   return true;
+}
+
+/**
+ * Applies a keyword-event spec (rename + color + busy) with guarded, loop-safe writes.
+ * Only writes when a value actually differs, so a settled event triggers no further updates.
+ *
+ * @param {GoogleAppsScript.Calendar.CalendarEvent} event - The event to update
+ * @param {{title: string, color: string, busy: boolean}} spec - Keyword spec from CONFIG.KEYWORD_EVENTS
+ * @returns {boolean} True if anything was modified
+ */
+function applyKeywordEvent(event, spec) {
+  var changed = false;
+
+  if (event.getTitle() !== spec.title) {
+    event.setTitle(spec.title);
+    changed = true;
+  }
+
+  var targetColor = CalendarApp.EventColor[spec.color];
+  if (event.getColor() !== targetColor) {
+    event.setColor(targetColor);
+    changed = true;
+  }
+
+  // busy:true → enforce opaque (blocks time). Guard via advanced-API read so we only
+  // patch when the event is explicitly free; default-busy events are skipped (no loop).
+  if (spec.busy) {
+    var calendarId = Session.getEffectiveUser().getEmail();
+    var eventIdClean = event.getId().replace("@google.com", "");
+    try {
+      var resource = Calendar.Events.get(calendarId, eventIdClean);
+      if (resource.transparency === "transparent") {
+        Calendar.Events.patch({ transparency: "opaque" }, calendarId, eventIdClean);
+        changed = true;
+        Logger.log('Set BUSY (opaque): "' + spec.title + '"');
+      }
+    } catch (e) {
+      Logger.log('ERROR setting busy status: ' + e.toString());
+    }
+  }
+
+  return changed;
 }
 
 // ============================================================================
