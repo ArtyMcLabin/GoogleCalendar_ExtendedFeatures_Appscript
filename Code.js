@@ -1,15 +1,14 @@
-// v0.37 - Glue skips RED events (meetings) at capture + move time
+// v0.38 - "breath"/"b" keyword → Breath+green; removed pointless rate-limit sleeps (glue faster)
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
 // ============================================================================
 
 var CONFIG = {
-  LOCK_TIMEOUT_MS: 30000, // 30 seconds - must be longer than processing time (glue = ~9s)
+  LOCK_TIMEOUT_MS: 30000, // 30 seconds - ample headroom for processing time
   MAX_EVENTS: 2500,
   LOOKBACK_DAYS: 1,
   RECENT_EVENTS_LOOKBACK_SECONDS: 30, // For processing multiple rapid events
-  API_RATE_LIMIT_DELAY_MS: 3000,
   MEETING_REMINDER_MINUTES: 3,
   FAILURE_NOTIFICATION_COOLDOWN_MS: 24 * 60 * 60 * 1000, // 24 hours
 
@@ -20,6 +19,10 @@ var CONFIG = {
     FREE: 'f ',
     DAILY: 'daily '
   },
+
+  // Exact-match keywords (case-insensitive, whole title) → rename + recolor green
+  BREATH_KEYWORDS: ['breath', 'b'],
+  BREATH_TITLE: 'Breath',
 
   MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
@@ -224,6 +227,23 @@ function autoColorAndRenameEvent(event) {
 
   var titleLower = originalTitle.toLowerCase();
   var processed = false;
+
+  // Exact-match keyword: whole title "breath" or "b" → "Breath" + green.
+  // Guarded setters make it idempotent and loop-safe (no rewrite once correct).
+  if (CONFIG.BREATH_KEYWORDS.indexOf(titleLower.trim()) !== -1) {
+    var breathChanged = false;
+    if (originalTitle !== CONFIG.BREATH_TITLE) {
+      event.setTitle(CONFIG.BREATH_TITLE);
+      breathChanged = true;
+    }
+    if (event.getColor() !== CalendarApp.EventColor.GREEN) {
+      event.setColor(CalendarApp.EventColor.GREEN);
+      breathChanged = true;
+    }
+    Logger.log('Breath keyword: "' + originalTitle + '" → "' + CONFIG.BREATH_TITLE + '" (green)');
+    Logger.log("END autoColorAndRenameEvent - Breath");
+    return breathChanged;
+  }
 
   // Check for "daily " prefix first (longer prefix)
   if (titleLower.indexOf(CONFIG.COLOR_PREFIXES.DAILY.toLowerCase()) === 0) {
@@ -511,9 +531,6 @@ function handleGlueEvent(calendar, glueEvent) {
       eventId
     );
 
-    // Rate limiting delay
-    Utilities.sleep(CONFIG.API_RATE_LIMIT_DELAY_MS);
-
     // Check if glue event has moved
     var currentStartTime = glueEvent.getStartTime().getTime();
     var storedData = PROPERTIES.getProperty(eventId);
@@ -583,9 +600,6 @@ function findContainedEvents(calendar, glueEvent) {
   var events = calendar.getEvents(glueStart, glueEnd);
   Logger.log('Total events in glue window: ' + events.length);
 
-  // Rate limiting delay
-  Utilities.sleep(CONFIG.API_RATE_LIMIT_DELAY_MS);
-
   return events
     .filter(function(event) {
       // Skip the glue event itself
@@ -629,9 +643,6 @@ function findContainedEvents(calendar, glueEvent) {
  */
 function moveContainedEvents(calendar, glueEvent, containedEvents, timeDifference) {
   Logger.log('Moving ' + containedEvents.length + ' contained events');
-
-  // Rate limiting delay
-  Utilities.sleep(CONFIG.API_RATE_LIMIT_DELAY_MS);
 
   containedEvents.forEach(function(eventInfo) {
     try {
