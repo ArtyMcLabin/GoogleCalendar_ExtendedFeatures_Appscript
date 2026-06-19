@@ -27,7 +27,7 @@ var CONFIG = {
     { keywords: ['declutter', 'd'], title: 'Declutter', color: 'GREEN', busy: true }
   ],
 
-  MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
+  MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride', '<>'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
 
   // NOTIFICATION_EMAIL: SSoT — getNotificationEmail() reads from Script Properties first,
