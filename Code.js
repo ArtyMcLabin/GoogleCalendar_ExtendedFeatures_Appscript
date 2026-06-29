@@ -1,4 +1,4 @@
-// v0.39 - keyword events (breath/declutter) → rename+green+busy; removed pointless rate-limit sleeps
+// v0.40 - meeting keywords +webinar/huddle/interview/conference/webex/zoom/1:1/one-on-one (→ red); +demo (whole-word only)
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -27,7 +27,10 @@ var CONFIG = {
     { keywords: ['declutter', 'd'], title: 'Declutter', color: 'GREEN', busy: true }
   ],
 
-  MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride', '<>'],
+  // Substring match (matches anywhere in title, case-insensitive).
+  MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride', 'webinar', 'huddle', 'interview', 'conference', 'webex', 'zoom', '1:1', 'one-on-one', '<>'],
+  // Whole-word match only (won't match inside larger words, e.g. "demo" but not "democracy"/"demolition").
+  MEETING_KEYWORDS_WHOLE_WORD: ['demo'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
 
   // NOTIFICATION_EMAIL: SSoT — getNotificationEmail() reads from Script Properties first,
@@ -445,6 +448,13 @@ function isMeetingEvent(event, title, description, location, currentColor) {
     if (title.indexOf(keyword) !== -1) { matchedKeyword = keyword; return true; }
     return false;
   });
+  if (!matchedKeyword) {
+    CONFIG.MEETING_KEYWORDS_WHOLE_WORD.some(function(keyword) {
+      var escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp('\\b' + escaped + '\\b').test(title)) { matchedKeyword = keyword; return true; }
+      return false;
+    });
+  }
   var hasKeyword = matchedKeyword !== null;
 
   var matchedMethod = null;
