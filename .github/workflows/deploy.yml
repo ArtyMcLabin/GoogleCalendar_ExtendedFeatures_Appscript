@@ -85,7 +85,22 @@ jobs:
           echo "Credentials file is present and contains a refresh token."
 
       - name: Push to Apps Script
-        run: clasp push --force
+        # Retry: clasp intermittently hits "Premature close" fetching the Google
+        # OAuth token (oauth2.googleapis.com flake). Retry up to 3x with backoff.
+        run: |
+          for attempt in 1 2 3; do
+            echo "clasp push attempt $attempt/3..."
+            if clasp push --force; then
+              echo "Push succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "Attempt $attempt failed."
+            if [ "$attempt" -lt 3 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "::error::clasp push failed after 3 attempts."
+          exit 1
 
       - name: Confirm deployment
         run: echo "Successfully deployed to Apps Script (script ID $(jq -r .scriptId .clasp.json))"
