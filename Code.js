@@ -919,3 +919,69 @@ function setupNotificationEmail() {
   PropertiesService.getScriptProperties().setProperty('NOTIFICATION_EMAIL', email);
   Logger.log('NOTIFICATION_EMAIL set to: ' + email);
 }
+
+// ============================================================================
+// TESTS (headless — run via run-appscript.sh, no calendar writes)
+// ============================================================================
+
+/**
+ * Verifies meeting-keyword and exclusion matching against known titles.
+ * Pure logic: reads no calendar data and modifies nothing.
+ * Throws on the first mismatch so a failing run is visible in the API response.
+ *
+ * @returns {string} Summary line, e.g. "27/27 passed"
+ */
+function testMeetingKeywordMatching() {
+  // [title, expected keyword or null, expected exclusion or null]
+  var cases = [
+    ['meet&match', null, null],
+    ['Meet&Match networking', null, null],
+    ['meet with tomer', 'meet', null],
+    ['team meeting', 'meeting', null],
+    ['meetings block', 'meeting', null],
+    ['google search work', null, null],
+    ['go to gym', 'go', null],
+    ['recall the docs', null, null],
+    ['call with sam', 'call', null],
+    ['calls today', 'call', null],
+    ['democracy lecture', null, null],
+    ['demo day', 'demo', null],
+    ['retraining the model', null, null],
+    ['train ride', 'train', null],
+    ['training session', 'training', null],
+    ['1:1 with sam', '1:1', null],
+    ['one-on-one sync', 'one-on-one', null],
+    ['arty <> tomer', '<>', null],
+    ['interviewing candidates', null, null],
+    ['interview with candidate', 'interview', null],
+    ['prep tomer meeting - topic: financial sheet', 'meeting', 'prep'],
+    ['preparation for call', 'call', 'preparation'],
+    ['prepping demo', 'demo', 'prepping'],
+    ['prepare slides', null, 'prepare'],
+    ['unprepared for call', 'call', null],
+    ['zoom call', 'call', null],
+    ['e-meet with x', null, null]
+  ];
+
+  var failures = [];
+  cases.forEach(function(testCase) {
+    var title = testCase[0].toLowerCase();
+    var keyword = matchWholeWordKeyword(title, CONFIG.MEETING_KEYWORDS);
+    var exclusion = matchWholeWordKeyword(title, CONFIG.MEETING_EXCLUSIONS);
+
+    if (keyword !== testCase[1] || exclusion !== testCase[2]) {
+      failures.push('"' + testCase[0] + '": keyword=' + keyword + ' (want ' + testCase[1] +
+        '), exclusion=' + exclusion + ' (want ' + testCase[2] + ')');
+    }
+  });
+
+  if (failures.length) {
+    var message = failures.length + '/' + cases.length + ' FAILED:\n' + failures.join('\n');
+    Logger.log(message);
+    throw new Error(message);
+  }
+
+  var summary = cases.length + '/' + cases.length + ' passed';
+  Logger.log('testMeetingKeywordMatching: ' + summary);
+  return summary;
+}
