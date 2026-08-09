@@ -29,10 +29,15 @@ Quickly format events with simple prefixes that auto-remove after processing:
 Automatically detects and enhances meeting events:
 
 **Detection criteria:**
-- Keywords in title: `meet`, `meeting`, `call`, `go`, `train`, `ride`
+- Keywords in title: `meet`, `meeting`, `call`, `go`, `train`, `training`, `ride`, `webinar`, `huddle`, `interview`, `conference`, `webex`, `zoom`, `1:1`, `one-on-one`, `<>`, `demo`
+  - Whole word only - `meet&match`, `google` and `democracy` are **not** meetings. A trailing `s` is fine (`calls`, `meetings`).
 - Meeting platforms in description/location: Google Meet, Zoom, Webex, GoToMeeting, Calendly, Zeeg
 - Events with attendees
 - Events already colored red
+
+**Exclusions (override everything above):**
+- `prep`, `prepare`, `preparing`, `preparation`, `prepping` in the title → never treated as a meeting
+- e.g. `prep tomer meeting - topic: financial sheet` stays uncolored - it's prep *for* a meeting, not the meeting
 
 **Auto-enhancements:**
 - ✅ Colors meeting **RED**
@@ -160,7 +165,8 @@ var CONFIG = {
     DAILY: 'daily '
   },
 
-  MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride'],
+  MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride', ...],  // whole-word match
+  MEETING_EXCLUSIONS: ['prep', 'prepare', 'preparing', 'preparation', 'prepping'],  // veto list
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', ...]
 };
 ```

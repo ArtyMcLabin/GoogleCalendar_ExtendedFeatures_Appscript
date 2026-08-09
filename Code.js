@@ -1,4 +1,4 @@
-// v0.40 - meeting keywords +webinar/huddle/interview/conference/webex/zoom/1:1/one-on-one (→ red); +demo (whole-word only)
+// v0.41 - all meeting keywords are whole-word now ("meet&match"/"google" no longer match); "prep"/"prepare"/"preparation" veto meeting detection
 
 // ============================================================================
 // CONFIGURATION CONSTANTS
@@ -27,10 +27,16 @@ var CONFIG = {
     { keywords: ['declutter', 'd'], title: 'Declutter', color: 'GREEN', busy: true }
   ],
 
-  // Substring match (matches anywhere in title, case-insensitive).
-  MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'ride', 'webinar', 'huddle', 'interview', 'conference', 'webex', 'zoom', '1:1', 'one-on-one', '<>'],
-  // Whole-word match only (won't match inside larger words, e.g. "demo" but not "democracy"/"demolition").
-  MEETING_KEYWORDS_WHOLE_WORD: ['demo'],
+  // Whole-word match in title, case-insensitive. A keyword never fires when it is glued to
+  // more word characters: "meet" does NOT match "meet&match", "go" does NOT match "google".
+  // An optional trailing "s" is allowed, so "calls"/"meetings"/"demos" still match.
+  // Keywords with no word characters at their edges (e.g. "<>") match anywhere.
+  MEETING_KEYWORDS: ['meet', 'meeting', 'call', 'go', 'train', 'training', 'ride', 'webinar', 'huddle', 'interview', 'conference', 'webex', 'zoom', '1:1', 'one-on-one', '<>', 'demo'],
+
+  // Veto list (whole-word, same rules). A hit here disqualifies the event from meeting
+  // detection entirely — a prep block for a meeting is not the meeting itself.
+  // e.g. "prep tomer meeting - topic: financial sheet" stays uncolored.
+  MEETING_EXCLUSIONS: ['prep', 'prepare', 'preparing', 'preparation', 'prepping'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
 
   // NOTIFICATION_EMAIL: SSoT — getNotificationEmail() reads from Script Properties first,
@@ -432,6 +438,52 @@ function colorMeetings(event) {
   return wasModified;
 }
 
+// Characters that count as "inside a word" for whole-word matching. Deliberately wider than
+// regex \w: & + and - are included so "meet&match", "e-meet" and "call+demo" don't count as
+// containing the bare keyword. \b alone would match "meet" in "meet&match".
+var MEETING_WORD_CHARS = 'A-Za-z0-9_&+\\-';
+
+var MEETING_KEYWORD_REGEX_CACHE = {};
+
+/**
+ * Builds a case-insensitive whole-word regex for a keyword.
+ * A boundary is only required on an edge that is itself a word character, so keywords like
+ * "<>" (no word chars) still match anywhere. An optional trailing "s" is accepted.
+ *
+ * @param {string} keyword - Keyword to match
+ * @returns {RegExp} Compiled matcher
+ */
+function buildKeywordRegex(keyword) {
+  if (MEETING_KEYWORD_REGEX_CACHE[keyword]) {
+    return MEETING_KEYWORD_REGEX_CACHE[keyword];
+  }
+
+  var escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  var isWordChar = new RegExp('[' + MEETING_WORD_CHARS + ']');
+  var prefix = isWordChar.test(keyword.charAt(0)) ? '(^|[^' + MEETING_WORD_CHARS + '])' : '';
+  var suffix = isWordChar.test(keyword.charAt(keyword.length - 1)) ? 's?($|[^' + MEETING_WORD_CHARS + '])' : '';
+
+  var regex = new RegExp(prefix + escaped + suffix, 'i');
+  MEETING_KEYWORD_REGEX_CACHE[keyword] = regex;
+  return regex;
+}
+
+/**
+ * Returns the first keyword that matches the text as a whole word, or null.
+ *
+ * @param {string} text - Text to search (typically the event title)
+ * @param {string[]} keywords - Keywords to test
+ * @returns {?string} Matched keyword, or null when none match
+ */
+function matchWholeWordKeyword(text, keywords) {
+  var matched = null;
+  (keywords || []).some(function(keyword) {
+    if (buildKeywordRegex(keyword).test(text)) { matched = keyword; return true; }
+    return false;
+  });
+  return matched;
+}
+
 /**
  * Determines if an event is a meeting based on multiple criteria.
  *
@@ -443,18 +495,15 @@ function colorMeetings(event) {
  * @returns {boolean} True if event is a meeting
  */
 function isMeetingEvent(event, title, description, location, currentColor) {
-  var matchedKeyword = null;
-  CONFIG.MEETING_KEYWORDS.some(function(keyword) {
-    if (title.indexOf(keyword) !== -1) { matchedKeyword = keyword; return true; }
+  // Veto first: an excluded word disqualifies the event outright, so a prep block never
+  // gets colored — and never re-qualifies later through the isRed check below.
+  var matchedExclusion = matchWholeWordKeyword(title, CONFIG.MEETING_EXCLUSIONS);
+  if (matchedExclusion) {
+    Logger.log('isMeetingEvent decision for "' + event.getTitle() + '": excluded by keyword "' + matchedExclusion + '"');
     return false;
-  });
-  if (!matchedKeyword) {
-    CONFIG.MEETING_KEYWORDS_WHOLE_WORD.some(function(keyword) {
-      var escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (new RegExp('\\b' + escaped + '\\b').test(title)) { matchedKeyword = keyword; return true; }
-      return false;
-    });
   }
+
+  var matchedKeyword = matchWholeWordKeyword(title, CONFIG.MEETING_KEYWORDS);
   var hasKeyword = matchedKeyword !== null;
 
   var matchedMethod = null;
