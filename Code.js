@@ -1,3 +1,4 @@
+// v0.42 - "followup"/"arrange" style admin blocks are no longer mistaken for meetings; they soft-veto title keywords and a stale red, while real attendees or a conferencing link still qualify
 // v0.41 - all meeting keywords are whole-word now ("meet&match"/"google" no longer match); "prep"/"prepare"/"preparation" veto meeting detection
 
 // ============================================================================
@@ -37,6 +38,20 @@ var CONFIG = {
   // detection entirely — a prep block for a meeting is not the meeting itself.
   // e.g. "prep tomer meeting - topic: financial sheet" stays uncolored.
   MEETING_EXCLUSIONS: ['prep', 'prepare', 'preparing', 'preparation', 'prepping'],
+
+  // Soft veto list (whole-word, same rules). These words mean the event is a personal admin
+  // block ABOUT a meeting rather than the meeting itself — "followup <name> - ask for the
+  // gamescom meeting" is a task, not a call. A hit here throws away the two weak signals
+  // (a keyword in the title, and an existing red colour that a previous run may have set)
+  // but keeps the strong ones: real guests or a conferencing link still make it a meeting,
+  // so "follow-up call with tomer" that actually has an attendee is coloured as usual.
+  // Softer than MEETING_EXCLUSIONS on purpose — a prep block never has guests, a followup can.
+  // Each entry already tolerates a trailing "s" via buildKeywordRegex, so "followups" needs no
+  // entry of its own. The hyphen and space spellings DO need separate entries: "-" counts as a
+  // word character here, so "followup" alone would not match "follow-up".
+  // "write"/"writing" are here for the same reason: "write to amir re bizdev of GR<>Tencent"
+  // is a writing task that trips the "<>" keyword, not a call with Tencent.
+  MEETING_SOFT_EXCLUSIONS: ['followup', 'follow-up', 'follow up', 'arrange', 'arranging', 'write', 'writing'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
 
   // NOTIFICATION_EMAIL: SSoT — getNotificationEmail() reads from Script Properties first,
@@ -503,8 +518,12 @@ function isMeetingEvent(event, title, description, location, currentColor) {
     return false;
   }
 
+  // Soft veto: the title says this is a block ABOUT a meeting, so the weak signals stop
+  // counting. Hard evidence below (guests, conferencing link) can still qualify it.
+  var matchedSoftExclusion = matchWholeWordKeyword(title, CONFIG.MEETING_SOFT_EXCLUSIONS);
+
   var matchedKeyword = matchWholeWordKeyword(title, CONFIG.MEETING_KEYWORDS);
-  var hasKeyword = matchedKeyword !== null;
+  var hasKeyword = matchedKeyword !== null && !matchedSoftExclusion;
 
   var matchedMethod = null;
   CONFIG.MEETING_METHODS.some(function(method) {
@@ -518,11 +537,14 @@ function isMeetingEvent(event, title, description, location, currentColor) {
   var attendees = event.getGuestList();
   var hasAttendees = attendees && attendees.length > 0;
 
-  var isRed = currentColor === CalendarApp.EventColor.RED;
+  // A soft-excluded event that is already red was almost certainly reddened by an earlier run
+  // of this script, so letting red count would make the mistake permanent.
+  var isRed = currentColor === CalendarApp.EventColor.RED && !matchedSoftExclusion;
 
   var eventId = event.getId();
   Logger.log('isMeetingEvent decision for "' + event.getTitle() + '" (id=' + eventId + '): ' +
-    'hasKeyword=' + hasKeyword + (matchedKeyword ? '(matched="' + matchedKeyword + '")' : '') +
+    'softExcluded=' + (matchedSoftExclusion ? '"' + matchedSoftExclusion + '"' : 'false') +
+    ', hasKeyword=' + hasKeyword + (matchedKeyword ? '(matched="' + matchedKeyword + '")' : '') +
     ', hasMeetingMethod=' + hasMeetingMethod + (matchedMethod ? '(matched="' + matchedMethod + '")' : '') +
     ', hasAttendees=' + hasAttendees + '(count=' + (attendees ? attendees.length : 0) + ')' +
     ', isRed=' + isRed + '(currentColor="' + currentColor + '")');
@@ -932,7 +954,7 @@ function setupNotificationEmail() {
  * @returns {string} Summary line, e.g. "27/27 passed"
  */
 function testMeetingKeywordMatching() {
-  // [title, expected keyword or null, expected exclusion or null]
+  // [title, expected keyword or null, expected exclusion or null, expected soft exclusion or null]
   var cases = [
     ['meet&match', null, null],
     ['Meet&Match networking', null, null],
@@ -960,7 +982,21 @@ function testMeetingKeywordMatching() {
     ['prepare slides', null, 'prepare'],
     ['unprepared for call', 'call', null],
     ['zoom call', 'call', null],
-    ['e-meet with x', null, null]
+    ['e-meet with x', null, null],
+    // Soft exclusions: admin blocks about a meeting, not the meeting itself.
+    ['followup Kelly Hill + Arthur Kawamoto (Warner Bros) - ask for the gamescom meeting',
+      'meeting', null, 'followup'],
+    ['follow-up with tomer re the demo', 'demo', null, 'follow-up'],
+    ['follow up on the zoom call', 'call', null, 'follow up'],
+    ['followups batch', null, null, 'followup'],
+    ['arrange the gamescom meeting', 'meeting', null, 'arrange'],
+    ['arranging travel', null, null, 'arranging'],
+    ['write to amir satvat after he adds me. re bizdev of gr<>tencent', '<>', null, 'write'],
+    ['writing the deck', null, null, 'writing'],
+    // Neighbouring words that must NOT soft-veto.
+    ['following the docs', null, null, null],
+    ['follower call', 'call', null, null],
+    ['writer interview', 'interview', null, null]
   ];
 
   var failures = [];
@@ -968,10 +1004,13 @@ function testMeetingKeywordMatching() {
     var title = testCase[0].toLowerCase();
     var keyword = matchWholeWordKeyword(title, CONFIG.MEETING_KEYWORDS);
     var exclusion = matchWholeWordKeyword(title, CONFIG.MEETING_EXCLUSIONS);
+    var softExclusion = matchWholeWordKeyword(title, CONFIG.MEETING_SOFT_EXCLUSIONS);
+    var wantSoft = testCase.length > 3 ? testCase[3] : null;
 
-    if (keyword !== testCase[1] || exclusion !== testCase[2]) {
+    if (keyword !== testCase[1] || exclusion !== testCase[2] || softExclusion !== wantSoft) {
       failures.push('"' + testCase[0] + '": keyword=' + keyword + ' (want ' + testCase[1] +
-        '), exclusion=' + exclusion + ' (want ' + testCase[2] + ')');
+        '), exclusion=' + exclusion + ' (want ' + testCase[2] +
+        '), softExclusion=' + softExclusion + ' (want ' + wantSoft + ')');
     }
   });
 

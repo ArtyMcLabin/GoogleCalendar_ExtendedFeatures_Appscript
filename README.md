@@ -35,9 +35,15 @@ Automatically detects and enhances meeting events:
 - Events with attendees
 - Events already colored red
 
-**Exclusions (override everything above):**
+**Hard exclusions (override everything above):**
 - `prep`, `prepare`, `preparing`, `preparation`, `prepping` in the title → never treated as a meeting
 - e.g. `prep tomer meeting - topic: financial sheet` stays uncolored - it's prep *for* a meeting, not the meeting
+
+**Soft exclusions (title keywords stop counting, real evidence still wins):**
+- `followup`, `follow-up`, `follow up`, `arrange`, `arranging`, `write`, `writing` in the title
+- These mark a personal admin block *about* a meeting rather than the meeting itself, so a keyword in the title no longer colors it - and neither does an existing red from an earlier run
+- e.g. `followup Kelly Hill - ask for the gamescom meeting` and `write to amir re bizdev of GR<>Tencent` stay uncolored
+- Unlike the hard exclusions, **real guests or a conferencing link still qualify the event** - a `follow-up call with tomer` that actually has an attendee is colored as usual
 
 **Auto-enhancements:**
 - ✅ Colors meeting **RED**
