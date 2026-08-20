@@ -39,6 +39,12 @@ Automatically detects and enhances meeting events:
 - `prep`, `prepare`, `preparing`, `preparation`, `prepping` in the title → never treated as a meeting
 - e.g. `prep tomer meeting - topic: financial sheet` stays uncolored - it's prep *for* a meeting, not the meeting
 
+**Negated keywords (don't count at all):**
+- A meeting keyword directly preceded by `no`, `not`, `never`, `without`, `zero`, `cancel`, `cancelled`, `canceled`, `skip`, `skipped`, `anti` is ignored - `No Meetings`, `no calls`, `cancelled call with tomer` are the opposite of a meeting
+- Filler in between is fine: `no more calls`, `not a meeting`
+- Checked **per occurrence**, so the negator is spent on the keyword it precedes and does not reach past it - `no calls - meeting with tomer` is still a meeting
+- A title whose keywords are *all* negated also stops an existing red from re-qualifying the event, so the mistake cannot re-assert itself. Note the script never *removes* a colour - an already-red event has to be cleared by hand once
+
 **Soft exclusions (title keywords stop counting, real evidence still wins):**
 - `followup`, `follow-up`, `follow up`, `arrange`, `arranging`, `write`, `writing` in the title
 - These mark a personal admin block *about* a meeting rather than the meeting itself, so a keyword in the title no longer colors it - and neither does an existing red from an earlier run

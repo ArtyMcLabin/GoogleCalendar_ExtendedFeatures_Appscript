@@ -1,3 +1,4 @@
+// v0.43 - negated titles no longer count: "No Meetings", "no calls", "cancelled call" are the opposite of a meeting. Per-occurrence, so "no calls - meeting with tomer" still qualifies on "meeting"
 // v0.42 - "followup"/"arrange" style admin blocks are no longer mistaken for meetings; they soft-veto title keywords and a stale red, while real attendees or a conferencing link still qualify
 // v0.41 - all meeting keywords are whole-word now ("meet&match"/"google" no longer match); "prep"/"prepare"/"preparation" veto meeting detection
 
@@ -52,6 +53,15 @@ var CONFIG = {
   // "write"/"writing" are here for the same reason: "write to amir re bizdev of GR<>Tencent"
   // is a writing task that trips the "<>" keyword, not a call with Tencent.
   MEETING_SOFT_EXCLUSIONS: ['followup', 'follow-up', 'follow up', 'arrange', 'arranging', 'write', 'writing'],
+
+  // Negators. A meeting keyword directly preceded by one of these does not count — "No Meetings"
+  // is the opposite of a meeting, not one. Checked per occurrence, so "no calls - meeting with
+  // tomer" still qualifies on "meeting": the "no" is spent on "calls" and does not reach past it.
+  MEETING_NEGATORS: ['no', 'not', 'never', 'without', 'zero', 'cancel', 'cancelled', 'canceled', 'skip', 'skipped', 'anti'],
+
+  // Words skipped when looking back for a negator, so "no more calls" and "not a meeting" are
+  // caught without letting a negator jump over a real word to veto an unrelated keyword.
+  MEETING_NEGATOR_FILLERS: ['more', 'a', 'an', 'any', 'other', 'the', 'of', 'my', 'our', 'new'],
   MEETING_METHODS: ['meet.google.com', 'zoom.us', 'webex.com', 'gotomeeting.com', 'calendly.com', 'zeeg.me'],
 
   // NOTIFICATION_EMAIL: SSoT — getNotificationEmail() reads from Script Properties first,
@@ -468,19 +478,75 @@ var MEETING_KEYWORD_REGEX_CACHE = {};
  * @param {string} keyword - Keyword to match
  * @returns {RegExp} Compiled matcher
  */
-function buildKeywordRegex(keyword) {
-  if (MEETING_KEYWORD_REGEX_CACHE[keyword]) {
-    return MEETING_KEYWORD_REGEX_CACHE[keyword];
+function buildKeywordRegex(keyword, global) {
+  var cacheKey = (global ? 'g:' : '') + keyword;
+  if (MEETING_KEYWORD_REGEX_CACHE[cacheKey]) {
+    return MEETING_KEYWORD_REGEX_CACHE[cacheKey];
   }
 
   var escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   var isWordChar = new RegExp('[' + MEETING_WORD_CHARS + ']');
+  // The prefix is a capture group so callers walking occurrences can subtract the boundary
+  // character and land on the keyword's own first character.
   var prefix = isWordChar.test(keyword.charAt(0)) ? '(^|[^' + MEETING_WORD_CHARS + '])' : '';
   var suffix = isWordChar.test(keyword.charAt(keyword.length - 1)) ? 's?($|[^' + MEETING_WORD_CHARS + '])' : '';
 
-  var regex = new RegExp(prefix + escaped + suffix, 'i');
-  MEETING_KEYWORD_REGEX_CACHE[keyword] = regex;
+  var regex = new RegExp(prefix + escaped + suffix, global ? 'gi' : 'i');
+  MEETING_KEYWORD_REGEX_CACHE[cacheKey] = regex;
   return regex;
+}
+
+/**
+ * True when the keyword occurrence starting at `index` is negated by the word before it.
+ * "No Meetings" and "cancelled call" are the opposite of a meeting, so they must not colour.
+ * Walks back over filler words only ("no more calls", "not a meeting") and stops at the first
+ * real word: a negator already spent on an earlier keyword must not reach the next one, which
+ * is what keeps "no calls - meeting with tomer" a meeting.
+ *
+ * @param {string} text - Full text being searched (typically the lowercased title)
+ * @param {number} index - Offset of the keyword's first character
+ * @returns {boolean} True when a negator precedes the occurrence
+ */
+function isNegatedBefore(text, index) {
+  var preceding = text.slice(0, index).split(/[^A-Za-z0-9']+/).filter(function(word) {
+    return word.length > 0;
+  });
+
+  for (var i = preceding.length - 1; i >= 0; i--) {
+    var word = preceding[i].toLowerCase();
+    if (CONFIG.MEETING_NEGATORS.indexOf(word) !== -1) { return true; }
+    if (CONFIG.MEETING_NEGATOR_FILLERS.indexOf(word) === -1) { return false; }
+  }
+  return false;
+}
+
+/**
+ * Returns the first meeting keyword that matches as a whole word AND is not negated, or null.
+ * Every occurrence of a keyword is tested, so "no calls - meeting with tomer" still matches
+ * on "meeting" even though the "call" occurrence is negated.
+ *
+ * @param {string} text - Text to search (typically the lowercased title)
+ * @returns {?string} Matched keyword, or null when none survive
+ */
+function matchMeetingKeyword(text) {
+  var matched = null;
+
+  CONFIG.MEETING_KEYWORDS.some(function(keyword) {
+    var regex = buildKeywordRegex(keyword, true);
+    regex.lastIndex = 0;
+
+    var found;
+    while ((found = regex.exec(text)) !== null) {
+      // found[1] is the leading boundary character when the keyword starts with a word char.
+      var keywordStart = found.index + (found[1] ? found[1].length : 0);
+      if (!isNegatedBefore(text, keywordStart)) { matched = keyword; return true; }
+      // Overlapping occurrences: a zero-width or trailing-boundary match can otherwise loop.
+      if (regex.lastIndex <= found.index) { regex.lastIndex = found.index + 1; }
+    }
+    return false;
+  });
+
+  return matched;
 }
 
 /**
@@ -522,8 +588,14 @@ function isMeetingEvent(event, title, description, location, currentColor) {
   // counting. Hard evidence below (guests, conferencing link) can still qualify it.
   var matchedSoftExclusion = matchWholeWordKeyword(title, CONFIG.MEETING_SOFT_EXCLUSIONS);
 
-  var matchedKeyword = matchWholeWordKeyword(title, CONFIG.MEETING_KEYWORDS);
+  var matchedKeyword = matchMeetingKeyword(title);
   var hasKeyword = matchedKeyword !== null && !matchedSoftExclusion;
+
+  // A title whose every keyword occurrence is negated ("No Meetings") is treated like a soft
+  // exclusion: without this, an instance an earlier run already reddened would stay red forever
+  // through the isRed check below.
+  var negatedOnly = matchedKeyword === null &&
+    matchWholeWordKeyword(title, CONFIG.MEETING_KEYWORDS) !== null;
 
   var matchedMethod = null;
   CONFIG.MEETING_METHODS.some(function(method) {
@@ -539,11 +611,12 @@ function isMeetingEvent(event, title, description, location, currentColor) {
 
   // A soft-excluded event that is already red was almost certainly reddened by an earlier run
   // of this script, so letting red count would make the mistake permanent.
-  var isRed = currentColor === CalendarApp.EventColor.RED && !matchedSoftExclusion;
+  var isRed = currentColor === CalendarApp.EventColor.RED && !matchedSoftExclusion && !negatedOnly;
 
   var eventId = event.getId();
   Logger.log('isMeetingEvent decision for "' + event.getTitle() + '" (id=' + eventId + '): ' +
     'softExcluded=' + (matchedSoftExclusion ? '"' + matchedSoftExclusion + '"' : 'false') +
+    ', negatedOnly=' + negatedOnly +
     ', hasKeyword=' + hasKeyword + (matchedKeyword ? '(matched="' + matchedKeyword + '")' : '') +
     ', hasMeetingMethod=' + hasMeetingMethod + (matchedMethod ? '(matched="' + matchedMethod + '")' : '') +
     ', hasAttendees=' + hasAttendees + '(count=' + (attendees ? attendees.length : 0) + ')' +
@@ -999,6 +1072,31 @@ function testMeetingKeywordMatching() {
     ['writer interview', 'interview', null, null]
   ];
 
+  // [title, expected non-negated keyword or null] — matchMeetingKeyword only.
+  var negationCases = [
+    ['no meetings', null],
+    ['No Meetings', null],
+    ['no calls', null],
+    ['no more calls today', null],
+    ['not a meeting', null],
+    ['never interview on fridays', null],
+    ['zero calls day', null],
+    ['cancelled call with tomer', null],
+    ['skip the demo', null],
+    ['no zoom', null],
+    // A negator must only kill the occurrence it precedes.
+    ['no calls - meeting with tomer', 'meeting'],
+    ['no meetings, demo with sam', 'demo'],
+    // Distance: a negator further back than the lookback window must not veto.
+    ['no laptop today so doing the call from phone', 'call'],
+    // Words that merely start with a negator must not veto.
+    ['nothing beats a good demo', 'demo'],
+    ['notion sync call', 'call'],
+    // Unchanged behaviour.
+    ['call with sam', 'call'],
+    ['meet&match', null]
+  ];
+
   var failures = [];
   cases.forEach(function(testCase) {
     var title = testCase[0].toLowerCase();
@@ -1014,13 +1112,25 @@ function testMeetingKeywordMatching() {
     }
   });
 
+  negationCases.forEach(function(testCase) {
+    var title = testCase[0].toLowerCase();
+    var keyword = matchMeetingKeyword(title);
+
+    if (keyword !== testCase[1]) {
+      failures.push('"' + testCase[0] + '": nonNegatedKeyword=' + keyword +
+        ' (want ' + testCase[1] + ')');
+    }
+  });
+
+  var total = cases.length + negationCases.length;
+
   if (failures.length) {
-    var message = failures.length + '/' + cases.length + ' FAILED:\n' + failures.join('\n');
+    var message = failures.length + '/' + total + ' FAILED:\n' + failures.join('\n');
     Logger.log(message);
     throw new Error(message);
   }
 
-  var summary = cases.length + '/' + cases.length + ' passed';
+  var summary = total + '/' + total + ' passed';
   Logger.log('testMeetingKeywordMatching: ' + summary);
   return summary;
 }
